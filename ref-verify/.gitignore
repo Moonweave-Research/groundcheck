@@ -1,0 +1,23 @@
+
+# Secrets / local env (security hardening 2026-06-03)
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+credentials.json
+
+# Python package/test artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+dist/
+build/
+.worktrees/

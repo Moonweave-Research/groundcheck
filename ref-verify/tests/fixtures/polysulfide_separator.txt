@@ -1,5 +1,0 @@
-Lithium-sulfur batteries suffer from rapid capacity fade associated with polysulfide dissolution and migration.
-The polysulfide shuttles lithium ions through the separator during cycling, which the operando measurements directly resolved.
-This shuttling mechanism leads to self-discharge and anode corrosion in practical cells.
-Operando X-ray fluorescence mapping confirmed the spatial distribution of sulfur species across the cell stack.
-Modified separators with ionic sieving layers were investigated as a mitigation strategy.

@@ -1,3 +1,0 @@
-The fluoroelastomer electret stabilizes trapped charge through chain dipoles oriented during poling.
-Charge decay measurements showed negligible loss over 12 months, consistent with deep trap stabilization by the oriented dipole network.
-X-ray diffraction confirmed partial crystallographic ordering of the fluoroelastomer chains after poling, corroborating the dipole alignment hypothesis.
