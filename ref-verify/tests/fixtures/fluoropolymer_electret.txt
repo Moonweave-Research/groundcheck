@@ -1,0 +1,3 @@
+The PVDF electret retains surface charge via corona poling at elevated temperature.
+Corona discharge was applied to PVDF films at 80 degrees Celsius for 30 minutes to align dipoles and embed quasi-permanent surface charge.
+Thermally stimulated depolarization current measurements confirmed that the embedded charge was stable for over 6 months under ambient conditions.

@@ -1,0 +1,3 @@
+The Nafion membrane bends through ion migration under applied voltage across the electrodes.
+Hydrated cations within the Nafion membrane redistribute toward the cathode side when a potential difference is established, generating an asymmetric swelling pressure that produces macroscopic curvature.
+Blocking the ionic pathway with a dehydrating pretreatment eliminated the bending response, confirming that mobile cation flux is the primary actuation mechanism.

@@ -7,7 +7,7 @@ description: "Prevents citation hallucination in academic writing. Invoke when: 
 
 The specific failure this skill prevents: LLMs describe paper content from recalled training data rather than from what live-fetched source text actually says. A paper gets attributed findings it doesn't contain, or cited for claims that appear nowhere in the text. The fix is one rule applied consistently:
 
-**Every content statement about a paper must come from live-fetched source text, quoted or paraphrased verbatim. Abstracts are enough only for existence/topic-level claims. Mechanism or implementation claims require full text. If you cannot fetch the needed source text, say so explicitly — never fill the gap with recalled description.**
+**Every content statement about a paper must come from live-fetched source text, quoted verbatim from the fetched text to assign SUPPORTED, and paraphrased only from the fetched text (never from memory) for any softer description. Abstracts are enough only for existence/topic-level claims. Mechanism or implementation claims require full text. If you cannot fetch the needed source text, say so explicitly — never fill the gap with recalled description.**
 
 ---
 
@@ -63,10 +63,11 @@ Run all five layers per paper. The layers are ordered by what they catch — don
 
 **Layer 1 — Existence**
 
-Search two sources independently:
+Search two sources independently. Use CrossRef and OpenAlex as the two-source baseline:
 - CrossRef: `https://api.crossref.org/works?query.bibliographic={title+author}&rows=5`
-- Semantic Scholar: `https://api.semanticscholar.org/graph/v1/paper/search?query={title+author}&fields=title,authors,year,externalIds,abstract&limit=5`
-- arXiv for preprints: `https://export.arxiv.org/api/query?search_query=ti:{title}&max_results=3`
+- OpenAlex: `https://api.openalex.org/works/doi:{DOI}` — no auth required; returns `title`, `authorships`, `publication_year`, `abstract_inverted_index`, and `is_retracted`. Also usable as a title search via `https://api.openalex.org/works?filter=title.search:{title}`.
+- Semantic Scholar: `https://api.semanticscholar.org/graph/v1/paper/search?query={title+author}&fields=title,authors,year,externalIds,abstract&limit=5` — treat as optional; S2 frequently returns HTTP 429 without an API key, in which case fall back to CrossRef + OpenAlex alone.
+- arXiv for preprints: `https://export.arxiv.org/api/query?search_query=ti:{title}&max_results=3` — the arXiv search API treats `+` as OR; URL-encode spaces as `%20` (or join multi-word terms with explicit `AND`, e.g. `ti:flexible%20AND%20actuator`) so that a multi-word title does not return false positives from single-keyword matches.
 
 A paper is confirmed only if titles essentially match and first-author last name agrees across two sources.
 
@@ -103,31 +104,40 @@ CrossRef abstracts are wrapped in JATS XML (`<jats:p>`, `<jats:italic>`, etc.). 
 
 For Tier-2 claims, also fetch full text before assigning support:
 1. PubMed Central article HTML/XML when a PMCID exists
-2. NCBI ID Converter / PMC OA package when DOI maps to a PMCID but the article page is hard to scrape
+2. NCBI ID Converter when DOI maps to a PMCID but the article page is hard to scrape: `https://www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/?ids={DOI}&format=json` — returns the PMCID if one exists; use it to construct the PMC article URL. Europe PMC is a parallel full-text fallback: `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query={title or DOI}&format=json` — covers PMC-deposited and European funder mandates.
 3. Unpaywall OA locations, preferring `url_for_pdf` or `url_for_landing_page`
 4. Publisher HTML or PDF from the DOI landing page
 5. arXiv full text for preprints
 
-When local source text is available, run the deterministic gate before writing the CONTENT verdict:
+When local source text is available, run the advisory checker to surface candidate evidence sentences and flags before writing the CONTENT verdict:
 
 ```
 python3 checker.py --claim "[claim]" --abstract-file abstract.txt --full-text-file fulltext.txt
 ```
 
-Use the checker output as the floor, not a suggestion. You may make a verdict stricter after manual reading, but never upgrade `ABSTRACT-LEVEL ONLY`, `UNSUPPORTED`, or `CONTRADICTED` to supported without a stronger verbatim full-text quote.
+The checker is a pure evidence surfacer plus a tier hint. It NEVER emits an authoritative content ACCEPT or REJECT at ANY tier, and it NEVER asserts a claim is SUPPORTED. Its verdict is ALWAYS WARN (advisory). Soundness is therefore structural, not heuristic: because there is no ACCEPT in any code path, a content false-ACCEPT from the checker is impossible by construction, regardless of how the claim is classified or matched. The depth field (TIER_1/TIER_2) is only a hint telling you which text to read and which advisory wording to expect; a misclassification at worst gives a slightly less apt flag, never a wrong clearance.
 
-After fetching, check: does the right source contain the specific claim being cited?
+- Tier-1 (topic/existence) hint: a topic match in the abstract returns content_status TOPIC-MATCH — agent must confirm, with verdict WARN, and surfaces the matched abstract sentence. The checker does NOT clear existence — it only sees text. Real existence/metadata/DOI verification is YOUR job via Layers 1, 2, and 4 (CrossRef, OpenAlex, DataCite, doi.org). Treat TOPIC-MATCH as "the abstract is on topic; now confirm the paper exists and read the sentence," not as a pass.
+- Tier-2 (mechanism) hint: every result is WARN, annotated with one of CANDIDATE-SUPPORT (a clean candidate sentence binding the claim actor+action was found — confirm it verbatim), POSSIBLE-CONTRADICTION (a sentence negates the claim or assigns the action to a different actor — check it), PARTIAL (adjacent keywords only), NO-CANDIDATE (nothing found), ABSTRACT-LEVEL ONLY (full text not searched), or UNVERIFIABLE (no source).
 
-- Tier-1: abstract explicitly contains the claim (quote it verbatim) → `CONTENT: SUPPORTED (abstract-level)`
-- Tier-2: full text explicitly contains the mechanism claim (quote it verbatim) → `CONTENT: SUPPORTED (full-text confirmed)`
-- Tier-2: abstract is topic-related but full text cannot be fetched or searched → `CONTENT: ABSTRACT-LEVEL ONLY — mechanism claim needs full text`
-- Tier-2: full text is fetched but only contains adjacent keywords, not the claimed mechanism relation → `CONTENT: PARTIAL — quote what it actually says`
-- Tier-2: full text is fetched and does not contain support for the mechanism claim → `CONTENT: UNSUPPORTED — no full-text support found`
+The checker also returns the best candidate sentence verbatim in its evidence field. Every authoritative ACCEPT/WARN/REJECT in the skill OUTPUT is YOUR job: read the surfaced sentence and apply the verbatim-quote rule (INC1).
+
+The checker is advisory at every tier. It does not decide support — it points you at the sentence to read. TOPIC-MATCH means: an on-topic abstract sentence was found; you assign the existence/topic call yourself after confirming the paper exists (two-source) and reading the sentence. CANDIDATE-SUPPORT means: a clean sentence was found; you assign SUPPORTED (full-text confirmed)/ACCEPT only after confirming a verbatim quote from that sentence actually binds the claimed actor, action, and any condition. POSSIBLE-CONTRADICTION means: a sentence negates the claim or attributes the action to a different actor; read it verbatim and assign CONTRADICTED/REJECT only if your verbatim read confirms it — do NOT auto-reject on the flag alone, and do NOT auto-accept by ignoring it. PARTIAL/NO-CANDIDATE/ABSTRACT-LEVEL ONLY/UNVERIFIABLE all stay WARN until you read source text that lets you make a stricter or supported call yourself. The verbatim quote you read always governs (INC1); the checker never overrides it and you never let a checker label substitute for reading the sentence.
+
+After fetching, check: does the right source contain the specific claim being cited? The checker only ever flags WARN — every authoritative CONTENT call below is YOURS, made from the verbatim source text:
+
+- Tier-1: checker returns TOPIC-MATCH and a sentence → confirm existence via two sources (Layer 1) and read the sentence; if the abstract explicitly contains the claim, write `CONTENT: SUPPORTED (abstract-level)` and quote it verbatim. The checker did not clear it — your two-source existence check plus verbatim read does.
+- Tier-2: checker returns CANDIDATE-SUPPORT and a sentence → read the sentence; if a verbatim quote binds the mechanism (actor, action, and any condition), write `CONTENT: SUPPORTED (full-text confirmed)` and quote it; otherwise treat as PARTIAL and write WARN.
+- Tier-2: checker returns POSSIBLE-CONTRADICTION and a sentence → read it; if it genuinely denies the claim or names a different actor, write `CONTENT: CONTRADICTED — do not use this citation` and quote it; if your read clears it, treat as PARTIAL or SUPPORTED per the quote.
+- Any tier: checker returns PARTIAL / NO-CANDIDATE / ABSTRACT-LEVEL ONLY / UNVERIFIABLE → the checker found no confirmable support; default WARN, and write CONTENT only from what you can quote from the source text.
 - Abstract is about the topic but doesn't make the specific Tier-1 claim → `CONTENT: PARTIAL — quote what it actually says`
-- Abstract or full text contradicts the claim → `CONTENT: CONTRADICTED — do not use this citation`
-- Abstract not accessible after trying all 5 sources → `CONTENT: UNVERIFIABLE — user must check full text`
+- Tier-1: abstract not accessible after trying all 5 sources → `CONTENT: UNVERIFIABLE — no abstract accessible (Tier-1 ends here)`
 
-**The rule that cannot be relaxed**: if you describe what a paper "shows" or "demonstrates" or "reports," you must quote or directly paraphrase the fetched source text at the required depth. Summarizing from memory is not permitted even if you feel confident. Abstracts prove topic direction, not implementation details.
+The checker's own verdict is always WARN at every tier — it never delivers an authoritative content ACCEPT or REJECT on your behalf. A SUPPORTED content rating is something you write from a verbatim quote, never something the checker hands you.
+
+**The rule that cannot be relaxed**: if you describe what a paper "shows" or "demonstrates" or "reports," you must quote directly or paraphrase only from the fetched source text at the required depth. Summarizing from memory is not permitted even if you feel confident. Abstracts prove topic direction, not implementation details.
+
+For Tier-2 claims (mechanism/implementation), if neither the abstract nor any full-text source can be fetched after exhausting all Layer-3 fallbacks, the content verdict is `CONTENT: UNVERIFIABLE — no abstract or full text accessible`. Do not assign any support rating, partial or otherwise, on the basis of title or keyword match alone.
 
 For Tier-2, keyword co-occurrence is not support. The quoted sentence(s) must bind the mechanism actors and relation: what component does the action, where it is located, what path/current/stimulus is used, and what role the material plays. If the quote says "LM layer served as a flexible Joule heater" and the claim says "the LCE bulk served as the Joule heater," that is `CONTRADICTED`, not partial support.
 
@@ -145,7 +155,7 @@ Only mark `DEAD` if the DOI fails to resolve at doi.org AND is absent from both 
 
 **Layer 5 — Retraction**
 
-Search `"{first author last name}" "{journal name}" retraction` and check the DOI landing page for retraction banners. Also check the CrossRef JSON `relation`/`update-to` fields, which flag retractions and corrections structurally. Free-text search alone produces false negatives for recent or poorly-indexed retractions — treat a clean search as "no retraction found," not "definitely not retracted." A retracted paper must not be used as a primary source.
+Search `"{first author last name}" "{journal name}" retraction` and check the DOI landing page for retraction banners. For the CrossRef JSON structural check, inspect `message.title[0]` for a `"RETRACTED ARTICLE:"` or `"Retracted:"` prefix — treat this as the primary structural retraction signal, since `message.update-to` is frequently absent. Also inspect `message.assertion[]` for retraction notices. Check OpenAlex `is_retracted` as a cross-check (see Layer 1). Free-text search alone produces false negatives for recent or poorly-indexed retractions — treat a clean search as "no retraction found," not "definitely not retracted." A retracted paper must not be used as a primary source.
 
 ---
 
@@ -180,9 +190,9 @@ Reason: [one sentence — what's missing or wrong]
 
 CONTENT field must show either a verbatim excerpt or an explicit warning/unverifiable state — never a summary written from memory.
 
-**ACCEPT**: two-source confirmed, DOI resolves to right paper, content supported at the required depth (`SUPPORTED (abstract-level)` for Tier-1, `SUPPORTED (full-text confirmed)` for Tier-2), no retraction.
-**WARN**: solvable issue — single source, partial content match, abstract inaccessible after trying all fallbacks, or Tier-2 claim stuck at `ABSTRACT-LEVEL ONLY`. Safe to use only if user verifies the flagged item.
-**REJECT**: DOI dead or resolves to wrong paper, paper not found anywhere, content unsupported after full-text search, content contradicted, or retraction confirmed.
+**ACCEPT**: two-source confirmed, DOI resolves to right paper, content supported at the required depth — and no retraction. The checker never grants this at any tier; you assign it yourself. For Tier-1 you must have a two-source existence confirmation plus a verbatim abstract quote of the topic claim (the checker's TOPIC-MATCH only points you at the sentence). For Tier-2 you must have personally confirmed a verbatim full-text quote that binds the mechanism (the checker only surfaces a CANDIDATE-SUPPORT sentence).
+**WARN**: solvable issue — single source, partial content match, abstract inaccessible after trying all fallbacks, or any claim where the checker returned a flag (TOPIC-MATCH, CANDIDATE-SUPPORT, POSSIBLE-CONTRADICTION, PARTIAL, NO-CANDIDATE, ABSTRACT-LEVEL ONLY, or UNVERIFIABLE) and you have not yet confirmed by verbatim read. Safe to use only if user verifies the flagged item.
+**REJECT**: DOI dead or resolves to wrong paper, paper not found anywhere, content contradicted (verbatim-read confirmed), or retraction confirmed. A Tier-2 REJECT (CONTRADICTED/unsupported) must be backed by your verbatim read of the contradicting or absent evidence — a POSSIBLE-CONTRADICTION flag alone is WARN, not REJECT, until you confirm it.
 
 Summary table after all cards:
 
@@ -207,6 +217,7 @@ X / Y verified.  Z need attention.
 - Never fill in missing metadata by guessing or pattern-matching.
 - If two sources disagree, show both — do not choose silently.
 - If the source text required for the claim depth is inaccessible after all fallbacks, use `UNVERIFIABLE` or `ABSTRACT-LEVEL ONLY` as specified above — do not substitute a description from memory.
+- The checker is advisory at EVERY tier: it surfaces a matched or candidate or contradicting sentence and a flag, but it never asserts any claim is SUPPORTED and never returns an authoritative ACCEPT or REJECT. Its verdict is always WARN. Treat every checker result — TOPIC-MATCH included — as WARN until your own verbatim quote (INC1), plus two-source existence for Tier-1, decides the call. A TOPIC-MATCH flag does not clear existence; a POSSIBLE-CONTRADICTION flag does not by itself reject — read the surfaced sentence first.
 
 ---
 
