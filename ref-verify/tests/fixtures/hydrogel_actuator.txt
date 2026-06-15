@@ -1,0 +1,3 @@
+The silver nanowire network served as the Joule heater; the hydrogel bulk stayed electrically passive.
+Upon resistive heating of the silver nanowire network, thermal energy diffused into the surrounding hydrogel, inducing a volume-phase transition and actuation.
+The hydrogel matrix provided mechanical compliance and shape-changing capability but did not contribute to electrical conduction.

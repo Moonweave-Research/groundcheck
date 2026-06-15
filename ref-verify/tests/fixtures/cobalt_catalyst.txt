@@ -1,0 +1,5 @@
+Cobalt-based single-atom catalysts have shown exceptional activity for oxygen reduction and activation reactions.
+The cobalt catalyst activates molecular oxygen through a superoxide intermediate, identified by EPR spectroscopy.
+The superoxide radical anion was confirmed by characteristic EPR signals at g = 2.003.
+Kinetic isotope effects indicated that the rate-limiting step involves O-O bond cleavage after superoxide formation.
+Turnover frequencies exceeded those of analogous iron and manganese catalysts under the same conditions.
