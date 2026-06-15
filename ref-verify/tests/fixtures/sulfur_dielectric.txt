@@ -1,3 +1,0 @@
-The sulfur-rich copolymer bulk stores charge through deep trap states formed during inverse vulcanization.
-Inverse vulcanization produces a highly cross-linked network with sulfur rank fragments that act as charge-trapping sites distributed throughout the bulk.
-Dielectric spectroscopy measurements revealed a broad loss peak at low frequencies, consistent with space-charge polarization originating from the deep trap distribution.
