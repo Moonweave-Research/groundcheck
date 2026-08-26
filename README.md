@@ -144,5 +144,4 @@ These are n=1 confirmations that the paths work, not a statistical benchmark. If
 ## Related
 
 - [Moonweave-Research/ref-verify](https://github.com/Moonweave-Research/ref-verify) — standalone repo for ref-verify (v1.0.0, stable)
-- [Moonweave-Systems/anneal-skill](https://github.com/Moonweave-Systems/anneal-skill) — measure-first decision discipline
-- [Moonweave-Systems/decide-skill](https://github.com/Moonweave-Systems/decide-skill) — decision automation for non-expert domains
+- [Moonweave-Systems/decision-kernel](https://github.com/Moonweave-Systems/decision-kernel) — evidence-gated decisions and drift/done checks for coding agents
